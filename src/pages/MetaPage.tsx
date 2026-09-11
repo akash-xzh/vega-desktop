@@ -926,7 +926,7 @@ export const MetaPage: React.FC = () => {
               />
             </div>
 
-            {(showEpisodeSearch || showEpisodeSort || rows.length > 1) && (
+            {(showEpisodeSearch || showEpisodeSort || rows.length > 1 || hasAnyPlayback) && (
               <div className="episode-tools">
                 {isSelectionMode ? (
                   <>

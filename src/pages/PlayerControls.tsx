@@ -198,7 +198,14 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
   const pendingPreviewBucketRef = useRef<number | null>(null);
   const queuedPreviewBucketRef = useRef<number | null>(null);
   const draggingTimelineRef = useRef(false);
+  const scrubCleanupRef = useRef<(() => void) | null>(null);
   const thumbnailCacheRef = useRef(new Map<number, string | null>());
+
+  useEffect(() => {
+    return () => {
+      scrubCleanupRef.current?.();
+    };
+  }, []);
   const [timelinePreview, setTimelinePreview] = useState<{
     time: number;
     percent: number;
@@ -395,22 +402,74 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
 
   const handleTrackMouseDown = useCallback(
     (e: React.MouseEvent) => {
+      // Only scrub with primary (left) mouse button
+      if (e.button !== 0) return;
       e.stopPropagation();
+
+      if (scrubCleanupRef.current) {
+        scrubCleanupRef.current();
+      }
+
       draggingTimelineRef.current = true;
       onScrubbingChange?.(true);
       updateTimelinePreview(e);
-      const onMove = (ev: MouseEvent) => updateTimelinePreview(ev);
-      const onUp = (ev: MouseEvent) => {
-        const seekTime = updateTimelinePreview(ev);
-        if (seekTime !== null) onSeek(seekTime);
+
+      let isCleanedUp = false;
+
+      const finishScrubbing = (ev?: MouseEvent) => {
+        if (isCleanedUp) return;
+        isCleanedUp = true;
+        scrubCleanupRef.current = null;
+
+        if (ev) {
+          const seekTime = updateTimelinePreview(ev);
+          if (seekTime !== null) onSeek(seekTime);
+        }
+
         draggingTimelineRef.current = false;
         onScrubbingChange?.(false);
         setTimelinePreview(null);
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
+
+        window.removeEventListener("mousemove", onMove, true);
+        window.removeEventListener("mouseup", onUp, true);
+        window.removeEventListener("pointerup", onUp, true);
+        window.removeEventListener("blur", onBlur);
       };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
+
+      const onMove = (ev: MouseEvent) => {
+        // Automatically release if mouse button is no longer held down
+        if (ev.buttons === 0 || (ev.buttons !== undefined && (ev.buttons & 1) === 0)) {
+          finishScrubbing(ev);
+          return;
+        }
+        updateTimelinePreview(ev);
+      };
+
+      const onUp = (ev: MouseEvent) => {
+        finishScrubbing(ev);
+      };
+
+      const onBlur = () => {
+        finishScrubbing();
+      };
+
+      scrubCleanupRef.current = () => {
+        if (!isCleanedUp) {
+          isCleanedUp = true;
+          draggingTimelineRef.current = false;
+          onScrubbingChange?.(false);
+          setTimelinePreview(null);
+          window.removeEventListener("mousemove", onMove, true);
+          window.removeEventListener("mouseup", onUp, true);
+          window.removeEventListener("pointerup", onUp, true);
+          window.removeEventListener("blur", onBlur);
+        }
+      };
+
+      window.addEventListener("mousemove", onMove, true);
+      window.addEventListener("mouseup", onUp, true);
+      window.addEventListener("pointerup", onUp, true);
+      window.addEventListener("blur", onBlur);
     },
     [onScrubbingChange, onSeek, updateTimelinePreview],
   );

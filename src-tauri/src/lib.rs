@@ -317,6 +317,19 @@ async fn generate_video_thumbnail(
 }
 
 #[tauri::command]
+fn clear_seek_thumbnails(app: AppHandle) -> Result<(), String> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .unwrap_or_else(|_| std::env::temp_dir())
+        .join("seek-thumbnails");
+    if cache_dir.exists() {
+        let _ = std::fs::remove_dir_all(&cache_dir);
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn open_external_player(
     url: String,
     player_path: Option<String>,
@@ -897,6 +910,7 @@ pub fn run() {
             get_stream_proxy_port,
             get_local_stream_url,
             generate_video_thumbnail,
+            clear_seek_thumbnails,
             get_torrent_api_port,
             download_manager::start_download,
             download_manager::pause_download,
