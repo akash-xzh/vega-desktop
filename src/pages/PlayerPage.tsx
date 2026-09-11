@@ -445,6 +445,21 @@ const TvPlayer: React.FC<any> = ({
         episode: activeEpisode,
         type: state.type,
       });
+
+      if (state.infoUrl && activeEpisode) {
+        try {
+          localStorage.setItem(
+            `vega_last_played_${state.infoUrl}`,
+            JSON.stringify({
+              episodeIndex: state.linkIndex,
+              seasonTitle: state.secondaryTitle || "",
+              episodeTitle: activeEpisode.title || `Episode ${state.linkIndex + 1}`,
+              episodeLink: activeEpisode.link || activeEpisode.sourceLink || "",
+              timestamp: Date.now(),
+            }),
+          );
+        } catch {}
+      }
     }
   }, [state, activeEpisode?.link, addItem]);
 
@@ -1064,6 +1079,21 @@ const DesktopPlayer: React.FC<any> = ({
       const savedZoom = settingsStorage.getPlayerZoom();
       if (savedZoom !== 100) {
         mpv.setProperty("video-zoom", Math.log2(savedZoom / 100));
+      }
+
+      if (state?.infoUrl && activeEpisode) {
+        try {
+          localStorage.setItem(
+            `vega_last_played_${state.infoUrl}`,
+            JSON.stringify({
+              episodeIndex: activeEpisodeIndex,
+              seasonTitle: state.secondaryTitle || "",
+              episodeTitle: activeEpisode.title || `Episode ${activeEpisodeIndex + 1}`,
+              episodeLink: activeEpisode.link || activeEpisode.sourceLink || "",
+              timestamp: Date.now(),
+            }),
+          );
+        } catch {}
       }
     },
   });

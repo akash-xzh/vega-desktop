@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState, useRef } from "react";
+import React, { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FocusContext, useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
 import { resume } from "@noriginmedia/norigin-spatial-navigation-core";
-import { LuArrowDownNarrowWide, LuArrowDownWideNarrow, LuArrowLeft, LuCircleAlert, LuRefreshCw, LuSearch, LuX, LuSquareCheck } from "react-icons/lu";
+import { LuArrowDownNarrowWide, LuArrowDownWideNarrow, LuArrowLeft, LuCircleAlert, LuRefreshCw, LuSearch, LuX, LuSquareCheck, LuPlay, LuRotateCcw } from "react-icons/lu";
 import { ContentDetailSkeleton } from "../components/content/ContentDetailSkeleton";
 import { ContentHero } from "../components/content/ContentHero";
 import { ContentOverview } from "../components/content/ContentOverview";
@@ -12,14 +12,16 @@ import { EpisodeRow } from "../components/content/EpisodeRow";
 import { InfoStoryDialog } from "../components/content/InfoStoryDialog";
 import { SeasonSelector } from "../components/content/SeasonSelector";
 import { DownloadServerDialog } from "../components/DownloadServerDialog";
+import { BatchQualityDialog } from "../components/content/BatchQualityDialog";
 import { FocusableButton } from "../components/layout/FocusableButton";
 import { Skeleton } from "../components/ui/skeleton";
 import { useArtworkPalette, useArtworkPaletteReady } from "../lib/hooks/useArtworkPalette";
 import { useContentDetails } from "../lib/hooks/useContentInfo";
 import { useEpisodes } from "../lib/hooks/useEpisodes";
 import type { EpisodeLink, Link, Stream, SkipInterval } from "../lib/providers/types";
+import { findBestMatchingStream } from "../lib/utils/streamQuality";
 import { providerManager } from "../lib/services/ProviderManager";
-import { cacheStorage } from "../lib/storage";
+import { cacheStorage, mainStorage, watchHistoryStorage } from "../lib/storage";
 import { settingsStorage } from "../lib/storage/SettingsStorage";
 import useContentStore from "../lib/zustand/contentStore";
 import { useDownloadStore, isVideoDownloadItem, isSubtitleDownloadItem } from "../lib/zustand/downloadStore";
@@ -160,6 +162,22 @@ export const MetaPage: React.FC = () => {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedEpisodes, setSelectedEpisodes] = useState<Set<number>>(new Set());
   const [isBatchDownloading, setIsBatchDownloading] = useState(false);
+  const [isBatchQualityDialogOpen, setIsBatchQualityDialogOpen] = useState(false);
+  const [batchQualityStreams, setBatchQualityStreams] = useState<Stream[]>([]);
+  const [isBatchQualityLoading, setIsBatchQualityLoading] = useState(false);
+  const [batchQualityError, setBatchQualityError] = useState<string | null>(null);
+  const [batchFirstEpTitle, setBatchFirstEpTitle] = useState<string>("");
+  const [batchProgress, setBatchProgress] = useState<{ current: number; total: number } | null>(null);
+  const [lastPlayedInfo, setLastPlayedInfo] = useState<{
+    episodeIndex: number;
+    seasonTitle?: string;
+    seasonEpisodesLink?: string;
+    episodeTitle: string;
+    episodeLink?: string;
+    position?: number;
+    duration?: number;
+    timestamp: number;
+  } | null>(null);
 
   const excludedQualities = useMemo(() => settingsStorage.getExcludedQualities(), []);
   const filteredLinkList = useMemo(() => {
@@ -245,6 +263,66 @@ export const MetaPage: React.FC = () => {
     setEpisodesProgress(progressMap);
   }, [episodeList, activeSeason, title]);
 
+  const refreshLastPlayed = useCallback(() => {
+    try {
+      const savedRaw = localStorage.getItem(`vega_last_played_${link}`);
+      let saved: any = savedRaw ? JSON.parse(savedRaw) : null;
+
+      const history = watchHistoryStorage.getWatchHistory();
+      const matchingHistory = history.filter(
+        (h: any) => h.link === link || (h.title && h.title.trim().toLowerCase() === title.trim().toLowerCase()),
+      );
+      matchingHistory.sort(
+        (a: any, b: any) => (b.timestamp || b.lastPlayed || 0) - (a.timestamp || a.lastPlayed || 0),
+      );
+      const latestHistory = matchingHistory[0];
+
+      if (
+        latestHistory &&
+        (!saved || (latestHistory.timestamp || latestHistory.lastPlayed || 0) > (saved.timestamp || 0))
+      ) {
+        const epTitle =
+          latestHistory.episode?.title ||
+          latestHistory.episodeTitle ||
+          `Episode 1`;
+        saved = {
+          episodeIndex: 0,
+          seasonTitle: latestHistory.episodeTitle || activeSeason?.title || "",
+          episodeTitle: epTitle,
+          episodeLink: latestHistory.episode?.link || latestHistory.id || "",
+          position: latestHistory.currentTime ?? latestHistory.progress,
+          duration: latestHistory.duration,
+          timestamp: latestHistory.timestamp || latestHistory.lastPlayed || Date.now(),
+        };
+      }
+
+      if (saved) {
+        if (saved.episodeLink) {
+          const storedProg = cacheStorage.getString(saved.episodeLink);
+          if (storedProg) {
+            try {
+              const p = JSON.parse(storedProg);
+              if (typeof p.position === "number") saved.position = p.position;
+              if (typeof p.duration === "number") saved.duration = p.duration;
+            } catch {}
+          }
+        }
+        setLastPlayedInfo(saved);
+      } else {
+        setLastPlayedInfo(null);
+      }
+    } catch (e) {
+      console.error("Failed to read last played episode", e);
+    }
+  }, [link, title, activeSeason?.title]);
+
+  useEffect(() => {
+    refreshLastPlayed();
+    const handleFocus = () => refreshLastPlayed();
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [refreshLastPlayed, episodesProgress]);
+
   const dialogDownloadedSubtitles = useMemo(() => {
     if (!dialogContext) return [];
     return Object.values(downloads)
@@ -297,6 +375,23 @@ export const MetaPage: React.FC = () => {
   };
 
   const play = (items: Array<{ title: string; link: string }>, index: number, type: string) => {
+    const ep = items[index];
+    const epData = {
+      episodeIndex: index,
+      seasonTitle: activeSeason?.title || "",
+      seasonEpisodesLink: activeSeason?.episodesLink || "",
+      episodeTitle: ep?.title || `Episode ${index + 1}`,
+      episodeLink: ep?.link || "",
+      timestamp: Date.now(),
+    };
+    try {
+      localStorage.setItem(`vega_last_played_${link}`, JSON.stringify(epData));
+      setLastPlayedInfo((prev) => ({
+        ...prev,
+        ...epData,
+      }));
+    } catch {}
+
     navigate("/player", {
       state: {
         episodeList: items,
@@ -485,19 +580,72 @@ export const MetaPage: React.FC = () => {
   const showEpisodeSearch = rows.length > 8 || Boolean(episodeSearch);
   const showEpisodeSort = rows.length > 1;
 
-  const executeBatchDownload = async () => {
+  const handleStartBatchDownload = async () => {
+    if (selectedEpisodes.size === 0) return;
+
+    const rowsToDownload = playableRows
+      .map((ep, idx) => ({ ep, idx }))
+      .filter(({ idx }) => selectedEpisodes.has(idx));
+
+    if (rowsToDownload.length === 0) return;
+
+    const firstItem = rowsToDownload[0];
+    setBatchFirstEpTitle(firstItem.ep.title || `Episode ${firstItem.idx + 1}`);
+    setBatchQualityStreams([]);
+    setBatchQualityError(null);
+    setIsBatchQualityLoading(true);
+    setIsBatchQualityDialogOpen(true);
+
+    try {
+      const streams = await providerManager.getStream({
+        link: firstItem.ep.link,
+        type: rowType,
+        signal: new AbortController().signal,
+        providerValue: activeProviderValue,
+        isDownload: true,
+      });
+
+      const validStreams = streams || [];
+      setBatchQualityStreams(validStreams);
+      if (validStreams.length === 0) {
+        setBatchQualityError("No downloadable streams found for the first episode.");
+      }
+    } catch (err) {
+      console.error("Failed to load streams for batch download", err);
+      setBatchQualityError(
+        err instanceof Error ? err.message : "Failed to load qualities from the first episode.",
+      );
+    } finally {
+      setIsBatchQualityLoading(false);
+    }
+  };
+
+  const handleSelectBatchQuality = async (selectedStream: Stream) => {
+    setIsBatchQualityDialogOpen(false);
+
+    const targetQuality = selectedStream.quality || selectedStream.type;
+    const targetServer = selectedStream.server;
+
+    await executeBatchDownload(targetQuality, targetServer);
+  };
+
+  const executeBatchDownload = async (targetQuality: string, targetServer?: string) => {
     if (selectedEpisodes.size === 0) return;
     setIsBatchDownloading(true);
-    
+
     try {
       const groupTitle = activeSeason?.title || "Default";
-      const rowsToDownload = playableRows.map((ep, idx) => ({ ep, idx }))
-        .filter((_, idx) => selectedEpisodes.has(idx));
+      const rowsToDownload = playableRows
+        .map((ep, idx) => ({ ep, idx }))
+        .filter(({ idx }) => selectedEpisodes.has(idx));
 
-      for (const { ep, idx } of rowsToDownload) {
+      for (let i = 0; i < rowsToDownload.length; i++) {
+        const { ep, idx } = rowsToDownload[i];
+        setBatchProgress({ current: i + 1, total: rowsToDownload.length });
+
         const id = `${title}_S${groupTitle}_E${idx + 1}`;
         const finalTitle = `${title} S${groupTitle} E${idx + 1}`;
-        
+
         const newContext: DialogContext = {
           id,
           title: finalTitle,
@@ -508,20 +656,33 @@ export const MetaPage: React.FC = () => {
           type: rowType as "movie" | "series",
           imdbId: info.imdbId || meta?.imdbId,
           sourceLink: ep.link,
-          skip: (ep as any)?.skip || (ep as any)?.skips || (activeSeason as any)?.skip || (activeSeason as any)?.skips,
+          skip:
+            (ep as any)?.skip ||
+            (ep as any)?.skips ||
+            (activeSeason as any)?.skip ||
+            (activeSeason as any)?.skips,
         };
 
         setExtractingId(id);
         try {
-          const streams = await providerManager.getStream({
-            link: ep.link,
-            type: rowType,
-            signal: new AbortController().signal,
-            providerValue: activeProviderValue,
-            isDownload: true,
-          });
-          if (streams && streams.length > 0) {
-            await executeQuickDownload(newContext, streams[0]);
+          // If first episode and batchQualityStreams already loaded, reuse them
+          let streams: Stream[] = [];
+          if (i === 0 && batchQualityStreams.length > 0) {
+            streams = batchQualityStreams;
+          } else {
+            const fetched = await providerManager.getStream({
+              link: ep.link,
+              type: rowType,
+              signal: new AbortController().signal,
+              providerValue: activeProviderValue,
+              isDownload: true,
+            });
+            streams = fetched || [];
+          }
+
+          if (streams.length > 0) {
+            const bestStream = findBestMatchingStream(streams, targetQuality, targetServer);
+            await executeQuickDownload(newContext, bestStream);
           }
         } catch (e) {
           console.error(`Failed to download ${finalTitle}`, e);
@@ -532,8 +693,120 @@ export const MetaPage: React.FC = () => {
       setExtractingId(null);
       setIsSelectionMode(false);
       setSelectedEpisodes(new Set());
+      setBatchQualityStreams([]);
+      setBatchProgress(null);
     }
   };
+
+  const formatTime = (seconds?: number): string => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return "0:00";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) {
+      return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+    }
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+
+  const handleContinuePlay = () => {
+    if (!lastPlayedInfo) return;
+
+    if (
+      lastPlayedInfo.seasonTitle &&
+      activeSeason &&
+      lastPlayedInfo.seasonTitle !== activeSeason.title
+    ) {
+      const matchingSeason = filteredLinkList.find(
+        (s: Link) => s.title === lastPlayedInfo.seasonTitle,
+      );
+      if (matchingSeason) {
+        setActiveSeason(matchingSeason);
+        localStorage.setItem(`vega_season_${link}`, matchingSeason.title);
+      }
+    }
+
+    let targetIndex = playableRows.findIndex(
+      (ep) =>
+        (lastPlayedInfo.episodeLink && ep.link === lastPlayedInfo.episodeLink) ||
+        (ep.title && ep.title.trim().toLowerCase() === lastPlayedInfo.episodeTitle.trim().toLowerCase()),
+    );
+
+    if (targetIndex < 0 && lastPlayedInfo.episodeIndex !== undefined) {
+      targetIndex = lastPlayedInfo.episodeIndex;
+    }
+
+    if (targetIndex >= 0 && targetIndex < playableRows.length) {
+      play(playableRows, targetIndex, rowType);
+    } else if (playableRows.length > 0) {
+      play(playableRows, 0, rowType);
+    }
+  };
+
+  const handleClearLastPlayed = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    try {
+      localStorage.removeItem(`vega_last_played_${link}`);
+      if (lastPlayedInfo?.episodeLink) {
+        watchHistoryStorage.removeFromWatchHistory(lastPlayedInfo.episodeLink);
+      }
+      setLastPlayedInfo(null);
+    } catch (err) {
+      console.error("Failed to clear last played history", err);
+    }
+  };
+
+  const handleClearAllPlaybacks = () => {
+    try {
+      const secondaryTitle = activeSeason?.title || "";
+      rows.forEach((ep: any, idx: number) => {
+        const keys = [
+          ep.id,
+          ep.sourceLink,
+          ep.link,
+          `resume_${title}_${secondaryTitle}_${idx}`,
+        ].filter(Boolean);
+        keys.forEach((k: string) => {
+          cacheStorage.delete(k);
+          mainStorage.delete(k);
+        });
+      });
+
+      episodeList?.forEach((ep: any, idx: number) => {
+        const keys = [
+          ep.id,
+          ep.sourceLink,
+          ep.link,
+          `resume_${title}_${secondaryTitle}_${idx}`,
+        ].filter(Boolean);
+        keys.forEach((k: string) => {
+          cacheStorage.delete(k);
+          mainStorage.delete(k);
+        });
+      });
+
+      const history = watchHistoryStorage.getWatchHistory();
+      history
+        .filter((h: any) => h.link === link || (h.title && h.title.trim().toLowerCase() === title.trim().toLowerCase()))
+        .forEach((h: any) => {
+          if (h.id) watchHistoryStorage.removeFromWatchHistory(h.id);
+          if (h.link) watchHistoryStorage.removeFromWatchHistory(h.link);
+        });
+
+      localStorage.removeItem(`vega_last_played_${link}`);
+      setLastPlayedInfo(null);
+      setEpisodesProgress({});
+    } catch (err) {
+      console.error("Failed to clear all playbacks", err);
+    }
+  };
+
+  const hasAnyPlayback = useMemo(() => {
+    const hasProgress = Object.values(episodesProgress).some(
+      (p) => p && typeof p.position === "number" && p.position > 0,
+    );
+    return Boolean(hasProgress || lastPlayedInfo);
+  }, [episodesProgress, lastPlayedInfo]);
 
   const selectSubtitle = async (sub: { uri: string; title: string; language?: string; type?: string }) => {
     if (!dialogContext) return;
@@ -591,6 +864,56 @@ export const MetaPage: React.FC = () => {
           />
 
           <section className="content-episodes-section" aria-label="Available links">
+            {lastPlayedInfo && (
+              <div className="continue-watching-card">
+                <div className="continue-watching-details">
+                  <span className="continue-watching-badge">LAST PLAYED</span>
+                  <h3 className="continue-watching-title">
+                    {lastPlayedInfo.episodeTitle}
+                  </h3>
+                  {lastPlayedInfo.position !== undefined && lastPlayedInfo.position > 0 && (
+                    <div className="continue-watching-meta">
+                      <div className="continue-watching-progress-bg">
+                        <div
+                          className="continue-watching-progress-fill"
+                          style={{
+                            width: `${
+                              lastPlayedInfo.duration
+                                ? Math.min(100, Math.max(0, (lastPlayedInfo.position / lastPlayedInfo.duration) * 100))
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+                      <span className="continue-watching-time">
+                        {lastPlayedInfo.duration
+                          ? `${Math.round((lastPlayedInfo.position / lastPlayedInfo.duration) * 100)}% • ${formatTime(lastPlayedInfo.position)} / ${formatTime(lastPlayedInfo.duration)}`
+                          : `Left at ${formatTime(lastPlayedInfo.position)}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="continue-watching-actions">
+                  <FocusableButton
+                    className="continue-watching-play-btn"
+                    onClick={handleContinuePlay}
+                    title="Continue watching"
+                  >
+                    <LuPlay size={16} />
+                    <span>Continue</span>
+                  </FocusableButton>
+                  <FocusableButton
+                    className="continue-watching-dismiss-btn"
+                    onClick={handleClearLastPlayed}
+                    title="Clear this history"
+                    aria-label="Clear last played episode"
+                  >
+                    <LuX size={18} />
+                  </FocusableButton>
+                </div>
+              </div>
+            )}
+
             <div>
               <SeasonSelector
                 seasons={filteredLinkList}
@@ -624,9 +947,13 @@ export const MetaPage: React.FC = () => {
                       className="episode-sort-button"
                       style={{ padding: '0 12px', width: 'auto', borderRadius: 6, fontSize: '0.9rem', backgroundColor: selectedEpisodes.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}
                       disabled={selectedEpisodes.size === 0 || isBatchDownloading}
-                      onClick={executeBatchDownload}
+                      onClick={handleStartBatchDownload}
                     >
-                      {isBatchDownloading ? "Downloading..." : `Download (${selectedEpisodes.size})`}
+                      {isBatchDownloading && batchProgress
+                        ? `Downloading ${batchProgress.current}/${batchProgress.total}...`
+                        : isBatchDownloading
+                        ? "Downloading..."
+                        : `Download (${selectedEpisodes.size})`}
                     </FocusableButton>
                     <FocusableButton 
                       className="episode-sort-button"
@@ -674,6 +1001,16 @@ export const MetaPage: React.FC = () => {
                         onClick={() => setIsSelectionMode(true)}
                       >
                         <LuSquareCheck size={22} />
+                      </FocusableButton>
+                    )}
+                    {hasAnyPlayback && (
+                      <FocusableButton
+                        className="episode-sort-button"
+                        title="Clear Playbacks"
+                        aria-label="Clear all playback history"
+                        onClick={handleClearAllPlaybacks}
+                      >
+                        <LuRotateCcw size={20} />
                       </FocusableButton>
                     )}
                   </>
@@ -802,6 +1139,21 @@ export const MetaPage: React.FC = () => {
               setIsDialogLoading(false);
             }
           }}
+        />
+        <BatchQualityDialog
+          isOpen={isBatchQualityDialogOpen}
+          onClose={() => {
+            setIsBatchQualityDialogOpen(false);
+            setBatchQualityStreams([]);
+            setBatchQualityError(null);
+            setIsBatchQualityLoading(false);
+          }}
+          streams={batchQualityStreams}
+          episodeTitle={batchFirstEpTitle}
+          selectedCount={selectedEpisodes.size}
+          onSelect={handleSelectBatchQuality}
+          loading={isBatchQualityLoading}
+          error={batchQualityError}
         />
         <EpisodeDetailsDialog
           details={episodeDetails}

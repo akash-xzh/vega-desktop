@@ -2282,3 +2282,135 @@
     animation: none;
   }
 }
+
+/* Continue Watching Banner (Upside of language selection bar) */
+.continue-watching-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  margin-bottom: 14px;
+  border-radius: 20px;
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-container-high);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  animation: continue-card-enter 180ms ease-out;
+}
+
+@keyframes continue-card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.continue-watching-details {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.continue-watching-badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  color: var(--primary);
+  text-transform: uppercase;
+}
+
+.continue-watching-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--on-surface);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.continue-watching-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 3px;
+}
+
+.continue-watching-progress-bg {
+  width: 130px;
+  height: 5px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.continue-watching-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: var(--primary);
+  transition: width 200ms ease;
+}
+
+.continue-watching-time {
+  font-size: 12px;
+  color: var(--on-surface-variant);
+  font-weight: 500;
+}
+
+.continue-watching-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.continue-watching-play-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 40px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--on-primary);
+  background: var(--primary);
+  border: none;
+  cursor: pointer;
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.continue-watching-play-btn:hover,
+.continue-watching-play-btn.tv-focus {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+.continue-watching-dismiss-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  color: var(--on-surface-variant);
+  background: var(--surface-container-highest);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.continue-watching-dismiss-btn:hover,
+.continue-watching-dismiss-btn.tv-focus {
+  color: var(--on-surface);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: var(--outline-variant);
+}
