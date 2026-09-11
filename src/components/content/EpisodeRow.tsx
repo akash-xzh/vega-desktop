@@ -92,6 +92,9 @@ interface EpisodeRowProps {
   ) => void;
   onDeleteDownload?: () => void;
   onShowDetails?: () => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }
 
 const EpisodeMedia: React.FC<{ image?: string }> = ({ image }) => {
@@ -131,6 +134,9 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
   onDownload,
   onDeleteDownload: _onDeleteDownload,
   onShowDetails,
+  selectionMode,
+  selected,
+  onToggleSelect,
 }) => {
   const episodeDescription = description?.trim();
   const descriptionRef = useRef<HTMLElement | null>(null);
@@ -269,9 +275,21 @@ export const EpisodeRow: React.FC<EpisodeRowProps> = ({
     <article className={`content-episode-row ${watched ? "watched" : ""}`}>
       <FocusableButton
         className="episode-play-area"
-        onClick={onPlay}
+        onClick={selectionMode ? onToggleSelect : onPlay}
         focusKey={`EPISODE_PLAY_${index}`}
       >
+        {selectionMode && (
+          <div className="episode-selection-checkbox" style={{
+            width: 24, height: 24, borderRadius: 4, 
+            border: '2px solid rgba(255,255,255,0.3)', 
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            marginRight: 12,
+            backgroundColor: selected ? 'var(--primary)' : 'transparent',
+            borderColor: selected ? 'var(--primary)' : 'rgba(255,255,255,0.3)'
+          }}>
+            {selected && <Check size={16} color="white" />}
+          </div>
+        )}
         <EpisodeMedia image={image} />
         <span className="episode-copy">
           <strong>{title}</strong>

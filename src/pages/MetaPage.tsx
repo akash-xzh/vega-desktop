@@ -3,7 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FocusContext, useFocusable } from "@noriginmedia/norigin-spatial-navigation-react";
 import { resume } from "@noriginmedia/norigin-spatial-navigation-core";
-import { LuArrowDownNarrowWide, LuArrowDownWideNarrow, LuArrowLeft, LuCircleAlert, LuRefreshCw, LuSearch, LuX } from "react-icons/lu";
+import { LuArrowDownNarrowWide, LuArrowDownWideNarrow, LuArrowLeft, LuCircleAlert, LuRefreshCw, LuSearch, LuX, LuSquareCheck } from "react-icons/lu";
 import { ContentDetailSkeleton } from "../components/content/ContentDetailSkeleton";
 import { ContentHero } from "../components/content/ContentHero";
 import { ContentOverview } from "../components/content/ContentOverview";
@@ -157,6 +157,9 @@ export const MetaPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">(() =>
     localStorage.getItem(episodeSortOrderKey) === "desc" ? "desc" : "asc",
   );
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedEpisodes, setSelectedEpisodes] = useState<Set<number>>(new Set());
+  const [isBatchDownloading, setIsBatchDownloading] = useState(false);
 
   const excludedQualities = useMemo(() => settingsStorage.getExcludedQualities(), []);
   const filteredLinkList = useMemo(() => {
@@ -470,6 +473,68 @@ export const MetaPage: React.FC = () => {
     setDialogError(null);
   };
 
+  const rows = activeSeason?.episodesLink ? episodeList || [] : activeSeason?.directLinks || [];
+  const rowType = activeSeason?.episodesLink ? "series" : activeSeason?.directLinks?.[0]?.type || info.type || "movie";
+  const displayedRows = rows
+    .map((episode: any, sourceIndex: number) => ({ episode, sourceIndex }))
+    .filter(({ episode }) =>
+      !episodeSearch.trim() || episode.title?.toLowerCase().includes(episodeSearch.trim().toLowerCase()),
+    );
+  if (sortOrder === "desc") displayedRows.reverse();
+  const playableRows = displayedRows.map(({ episode }) => episode);
+  const showEpisodeSearch = rows.length > 8 || Boolean(episodeSearch);
+  const showEpisodeSort = rows.length > 1;
+
+  const executeBatchDownload = async () => {
+    if (selectedEpisodes.size === 0) return;
+    setIsBatchDownloading(true);
+    
+    try {
+      const groupTitle = activeSeason?.title || "Default";
+      const rowsToDownload = playableRows.map((ep, idx) => ({ ep, idx }))
+        .filter((_, idx) => selectedEpisodes.has(idx));
+
+      for (const { ep, idx } of rowsToDownload) {
+        const id = `${title}_S${groupTitle}_E${idx + 1}`;
+        const finalTitle = `${title} S${groupTitle} E${idx + 1}`;
+        
+        const newContext: DialogContext = {
+          id,
+          title: finalTitle,
+          poster: posterImage,
+          showName: title,
+          episodeName: ep.title,
+          seasonTitle: groupTitle,
+          type: rowType as "movie" | "series",
+          imdbId: info.imdbId || meta?.imdbId,
+          sourceLink: ep.link,
+          skip: (ep as any)?.skip || (ep as any)?.skips || (activeSeason as any)?.skip || (activeSeason as any)?.skips,
+        };
+
+        setExtractingId(id);
+        try {
+          const streams = await providerManager.getStream({
+            link: ep.link,
+            type: rowType,
+            signal: new AbortController().signal,
+            providerValue: activeProviderValue,
+            isDownload: true,
+          });
+          if (streams && streams.length > 0) {
+            await executeQuickDownload(newContext, streams[0]);
+          }
+        } catch (e) {
+          console.error(`Failed to download ${finalTitle}`, e);
+        }
+      }
+    } finally {
+      setIsBatchDownloading(false);
+      setExtractingId(null);
+      setIsSelectionMode(false);
+      setSelectedEpisodes(new Set());
+    }
+  };
+
   const selectSubtitle = async (sub: { uri: string; title: string; language?: string; type?: string }) => {
     if (!dialogContext) return;
     const subId = `${dialogContext.id}_subtitle_${sub.title}`;
@@ -496,17 +561,7 @@ export const MetaPage: React.FC = () => {
     setDialogError(null);
   };
 
-  const rows = activeSeason?.episodesLink ? episodeList || [] : activeSeason?.directLinks || [];
-  const rowType = activeSeason?.episodesLink ? "series" : activeSeason?.directLinks?.[0]?.type || info.type || "movie";
-  const displayedRows = rows
-    .map((episode: any, sourceIndex: number) => ({ episode, sourceIndex }))
-    .filter(({ episode }) =>
-      !episodeSearch.trim() || episode.title?.toLowerCase().includes(episodeSearch.trim().toLowerCase()),
-    );
-  if (sortOrder === "desc") displayedRows.reverse();
-  const playableRows = displayedRows.map(({ episode }) => episode);
-  const showEpisodeSearch = rows.length > 8 || Boolean(episodeSearch);
-  const showEpisodeSort = rows.length > 1;
+
 
   return (
     <FocusContext.Provider value={focusKey}>
@@ -548,33 +603,80 @@ export const MetaPage: React.FC = () => {
               />
             </div>
 
-            {(showEpisodeSearch || showEpisodeSort) && (
+            {(showEpisodeSearch || showEpisodeSort || rows.length > 1) && (
               <div className="episode-tools">
-                {showEpisodeSearch && (
-                  <EpisodeSearchField
-                    value={episodeSearch}
-                    onChange={setEpisodeSearch}
-                    tvMode={tvMode}
-                  />
-                )}
-                {showEpisodeSort && (
-                  <FocusableButton
-                    className="episode-sort-button"
-                    focusKey="EPISODE_SORT_BUTTON"
-                    aria-label={sortOrder === "asc" ? "Sort episodes descending" : "Sort episodes ascending"}
-                    title={sortOrder === "asc" ? "Sort episodes descending" : "Sort episodes ascending"}
-                    onClick={() => {
-                      const nextOrder = sortOrder === "asc" ? "desc" : "asc";
-                      setSortOrder(nextOrder);
-                      localStorage.setItem(episodeSortOrderKey, nextOrder);
-                    }}
-                  >
-                    {sortOrder === "asc" ? (
-                      <LuArrowDownNarrowWide size={22} />
-                    ) : (
-                      <LuArrowDownWideNarrow size={22} />
+                {isSelectionMode ? (
+                  <>
+                    <FocusableButton 
+                      className="episode-sort-button"
+                      style={{ padding: '0 12px', width: 'auto', borderRadius: 6, fontSize: '0.9rem' }}
+                      onClick={() => {
+                        if (selectedEpisodes.size === playableRows.length) {
+                          setSelectedEpisodes(new Set());
+                        } else {
+                          setSelectedEpisodes(new Set(playableRows.map((_, i) => i)));
+                        }
+                      }}
+                    >
+                      {selectedEpisodes.size === playableRows.length ? "Deselect All" : "Select All"}
+                    </FocusableButton>
+                    <FocusableButton 
+                      className="episode-sort-button"
+                      style={{ padding: '0 12px', width: 'auto', borderRadius: 6, fontSize: '0.9rem', backgroundColor: selectedEpisodes.size > 0 ? 'var(--primary)' : 'rgba(255,255,255,0.1)' }}
+                      disabled={selectedEpisodes.size === 0 || isBatchDownloading}
+                      onClick={executeBatchDownload}
+                    >
+                      {isBatchDownloading ? "Downloading..." : `Download (${selectedEpisodes.size})`}
+                    </FocusableButton>
+                    <FocusableButton 
+                      className="episode-sort-button"
+                      style={{ padding: '0 12px', width: 'auto', borderRadius: 6, fontSize: '0.9rem' }}
+                      onClick={() => {
+                        setIsSelectionMode(false);
+                        setSelectedEpisodes(new Set());
+                      }}
+                    >
+                      Cancel
+                    </FocusableButton>
+                  </>
+                ) : (
+                  <>
+                    {showEpisodeSearch && (
+                      <EpisodeSearchField
+                        value={episodeSearch}
+                        onChange={setEpisodeSearch}
+                        tvMode={tvMode}
+                      />
                     )}
-                  </FocusableButton>
+                    {showEpisodeSort && (
+                      <FocusableButton
+                        className="episode-sort-button"
+                        focusKey="EPISODE_SORT_BUTTON"
+                        aria-label={sortOrder === "asc" ? "Sort episodes descending" : "Sort episodes ascending"}
+                        title={sortOrder === "asc" ? "Sort episodes descending" : "Sort episodes ascending"}
+                        onClick={() => {
+                          const nextOrder = sortOrder === "asc" ? "desc" : "asc";
+                          setSortOrder(nextOrder);
+                          localStorage.setItem(episodeSortOrderKey, nextOrder);
+                        }}
+                      >
+                        {sortOrder === "asc" ? (
+                          <LuArrowDownNarrowWide size={22} />
+                        ) : (
+                          <LuArrowDownWideNarrow size={22} />
+                        )}
+                      </FocusableButton>
+                    )}
+                    {rows.length > 1 && (
+                      <FocusableButton
+                        className="episode-sort-button"
+                        title="Batch Download"
+                        onClick={() => setIsSelectionMode(true)}
+                      >
+                        <LuSquareCheck size={22} />
+                      </FocusableButton>
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -650,6 +752,17 @@ export const MetaPage: React.FC = () => {
                         description: episode.description.trim(),
                         image: episode.image,
                       }) : undefined}
+                      selectionMode={isSelectionMode}
+                      selected={selectedEpisodes.has(index)}
+                      onToggleSelect={() => {
+                        const next = new Set(selectedEpisodes);
+                        if (next.has(index)) {
+                          next.delete(index);
+                        } else {
+                          next.add(index);
+                        }
+                        setSelectedEpisodes(next);
+                      }}
                     />
                   );
                 })}

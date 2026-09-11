@@ -13,7 +13,7 @@ import { useMediaSession } from "../lib/hooks/useMediaSession";
 import useContentStore from "../lib/zustand/contentStore";
 import useWatchHistoryStore from "../lib/zustand/watchHistrory";
 import { useDownloadStore } from "../lib/zustand/downloadStore";
-import { cacheStorage, mainStorage } from "../lib/storage";
+import { cacheStorage, mainStorage, watchHistoryStorage } from "../lib/storage";
 import { PlayerControls } from "./PlayerControls";
 import { PlayerInitError } from "./PlayerInitError";
 import type { SkipInterval } from "../lib/providers/types";
@@ -783,7 +783,7 @@ const DesktopPlayer: React.FC<any> = ({
   hourglassSandColor,
 }) => {
   const navigate = useNavigate();
-  const { history, addItem, updatePlaybackInfo } = useWatchHistoryStore();
+  const { addItem, updatePlaybackInfo } = useWatchHistoryStore();
   const { provider } = useContentStore();
 
   const [showControls, setShowControls] = useState(true);
@@ -1040,9 +1040,12 @@ const DesktopPlayer: React.FC<any> = ({
     onFileLoaded: () => {
       const historyKey =
         activeEpisode?.sourceLink || activeEpisode?.id || activeEpisode?.link;
-      const syncedProgress = history.find(
-        (item) => item.id === historyKey,
+      
+      const currentHistory = watchHistoryStorage.getWatchHistory();
+      const syncedProgress = currentHistory.find(
+        (item: any) => item.id === historyKey,
       )?.progress;
+
       if (syncedProgress !== undefined) {
         if (syncedProgress > 5) mpv.seek(syncedProgress);
         return;
@@ -1137,6 +1140,25 @@ const DesktopPlayer: React.FC<any> = ({
       })();
     };
   }, []);
+
+  useEffect(() => {
+    if (state.primaryTitle && !state.doNotTrack) {
+      addItem({
+        id:
+          activeEpisode?.sourceLink || activeEpisode?.id || activeEpisode?.link,
+        title: state.primaryTitle,
+        poster: state.poster?.poster || state.poster?.background || "",
+        background: state.poster?.background,
+        link: state.infoUrl || "",
+        provider: state.providerValue || "",
+        lastPlayed: Date.now(),
+        playbackRate: 1,
+        episodeTitle: state.secondaryTitle,
+        episode: activeEpisode,
+        type: state.type,
+      });
+    }
+  }, [state, activeEpisode?.link, addItem]);
 
   useEffect(() => {
     mpv.initPlayer();
