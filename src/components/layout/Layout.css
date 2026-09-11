@@ -24,7 +24,7 @@
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  scroll-behavior: smooth;
+  overscroll-behavior-y: contain;
 }
 
 .layout-content::after {

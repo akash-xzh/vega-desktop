@@ -4,10 +4,20 @@
   right: 0;
   left: 0;
   z-index: 20000;
-  height: 8px;
+  height: 38px;
+  pointer-events: none;
   color: var(--on-surface);
   user-select: none;
   transition: opacity 180ms ease;
+}
+
+.window-titlebar-edge-drag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 140px;
+  height: 10px;
+  pointer-events: auto;
 }
 
 body.player-window-fullscreen .window-titlebar-overlay,

@@ -39,6 +39,7 @@ import type { MpvChapter, MpvTrack } from "../lib/hooks/useMpvPlayer";
 import type { SkipInterval } from "../lib/providers/types";
 import { SearchSubtitlesModal } from "../components/SearchSubtitlesModal";
 import { settingsStorage } from "../lib/storage";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 
 interface PlayerControlsProps {
   visible: boolean;
@@ -544,16 +545,29 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
       <div className="controls-gradient-bottom" />
 
       {/* Top bar */}
-      <div className="player-top-bar">
+      <div className="player-top-bar" data-tauri-drag-region>
         <button className="player-back-btn" onClick={onBack}>
           <ArrowLeft size={22} />
         </button>
-        <div className="player-title-group">
-          <span className="player-primary-title">{primaryTitle}</span>
+        <div className="player-title-group" data-tauri-drag-region>
+          <span className="player-primary-title" data-tauri-drag-region>
+            {primaryTitle}
+          </span>
           {secondaryTitle && (
-            <span className="player-secondary-title">{secondaryTitle}</span>
+            <span className="player-secondary-title" data-tauri-drag-region>
+              {secondaryTitle}
+            </span>
           )}
         </div>
+        <div
+          className="player-top-drag-spacer"
+          data-tauri-drag-region
+          onMouseDown={(e) => {
+            if (e.button === 0) {
+              getCurrentWindow().startDragging().catch(() => {});
+            }
+          }}
+        />
       </div>
 
       {/* Center playback controls */}

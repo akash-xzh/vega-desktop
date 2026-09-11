@@ -28,6 +28,8 @@
 
 .catalog-grid .post-card {
   width: 100%;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 280px;
 }
 
 .catalog-grid.catalog-grid-landscape .skeleton-card {

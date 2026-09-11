@@ -1878,6 +1878,18 @@ const DesktopPlayer: React.FC<any> = ({
       style={{ backgroundColor: mpv.currentTime > 0 ? "transparent" : "#000" }}
       {...(isPip ? { "data-tauri-drag-region": true } : {})}
     >
+      {!isPip && !isFullscreen && (
+        <div
+          className="player-window-drag-strip"
+          data-tauri-drag-region
+          onMouseDown={(e) => {
+            if (e.button === 0) {
+              getCurrentWindow().startDragging().catch(() => {});
+            }
+          }}
+          onDoubleClick={toggleFullscreen}
+        />
+      )}
       <PlayerControls
         visible={showControls}
         isPaused={mpv.isPaused}

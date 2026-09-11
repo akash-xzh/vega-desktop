@@ -13,6 +13,15 @@
   pointer-events: none;
 }
 
+.topbar-drag-spacer {
+  flex: 1;
+  align-self: stretch;
+  min-width: 40px;
+  pointer-events: auto;
+  user-select: none;
+  cursor: default;
+}
+
 .search-wrapper {
   position: relative;
   width: min(460px, 52vw);

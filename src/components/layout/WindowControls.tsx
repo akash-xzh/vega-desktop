@@ -69,9 +69,17 @@ export const WindowControls: React.FC = () => {
   return (
     <div
       className="window-titlebar-overlay"
-      data-tauri-drag-region
       onDoubleClick={() => void toggleMaximize()}
     >
+      <div
+        className="window-titlebar-edge-drag"
+        data-tauri-drag-region
+        onMouseDown={(e) => {
+          if (e.button === 0) {
+            appWindow.startDragging().catch(() => {});
+          }
+        }}
+      />
       <div className="window-controls" aria-label="Window controls">
         <button
           type="button"

@@ -108,7 +108,7 @@ export const Sidebar: React.FC = () => {
   return (
     <FocusContext.Provider value={focusKey}>
       <aside className={`sidebar ${collapsed ? "collapsed" : ""}`} ref={ref as any}>
-        <div className="sidebar-brand">
+        <div className="sidebar-brand" data-tauri-drag-region>
           <FocusableButton
             className="sidebar-menu-toggle"
             onClick={toggleSidebar}
@@ -118,9 +118,9 @@ export const Sidebar: React.FC = () => {
           >
             <Menu size={26} />
           </FocusableButton>
-          <div className="sidebar-logo" aria-label="Vega">
-            <span className="sidebar-brand-icon" aria-hidden="true" />
-            <span className="sidebar-brand-name">Vega</span>
+          <div className="sidebar-logo" aria-label="Vega" data-tauri-drag-region>
+            <span className="sidebar-brand-icon" aria-hidden="true" data-tauri-drag-region />
+            <span className="sidebar-brand-name" data-tauri-drag-region>Vega</span>
           </div>
         </div>
 

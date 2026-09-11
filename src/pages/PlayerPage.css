@@ -241,6 +241,26 @@
   gap: 14px;
   padding: 16px 20px;
   z-index: 10;
+  user-select: none;
+}
+
+.player-top-drag-spacer {
+  flex: 1;
+  align-self: stretch;
+  min-width: 40px;
+  cursor: default;
+}
+
+.player-window-drag-strip {
+  position: fixed;
+  top: 0;
+  left: 60px;
+  right: 140px;
+  height: 48px;
+  z-index: 25;
+  pointer-events: auto;
+  user-select: none;
+  cursor: default;
 }
 
 .player-back-btn {

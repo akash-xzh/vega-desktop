@@ -17,6 +17,7 @@ import {
   type IMDbSuggestion,
 } from "../../lib/services/imdbSuggestions";
 import { ProviderSwitcher } from "./ProviderSwitcher";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./Topbar.css";
 
 const FocusableSuggestionItem: React.FC<{
@@ -222,7 +223,7 @@ export const Topbar: React.FC = () => {
     (isInputFocused || isTyping || isSuggestionsFocused || focused);
 
   return (
-    <header className="topbar">
+    <header className="topbar" data-tauri-drag-region>
       <div ref={containerRef} className="search-wrapper">
         <form className="search-container" onSubmit={handleSearch}>
           <div
@@ -319,6 +320,19 @@ export const Topbar: React.FC = () => {
           </FocusContext.Provider>
         )}
       </div>
+
+      <div
+        className="topbar-drag-spacer"
+        data-tauri-drag-region
+        onMouseDown={(e) => {
+          if (e.button === 0) {
+            getCurrentWindow().startDragging().catch(() => {});
+          }
+        }}
+        onDoubleClick={() => {
+          getCurrentWindow().toggleMaximize().catch(() => {});
+        }}
+      />
 
       <div className="topbar-actions">
         <ProviderSwitcher />
