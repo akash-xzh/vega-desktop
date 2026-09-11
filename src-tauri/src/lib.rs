@@ -317,7 +317,7 @@ async fn generate_video_thumbnail(
 }
 
 #[tauri::command]
-fn clear_seek_thumbnails(app: AppHandle) -> Result<(), String> {
+fn clear_seek_thumbnails(app: tauri::AppHandle) -> Result<(), String> {
     let cache_dir = app
         .path()
         .app_cache_dir()
@@ -520,7 +520,7 @@ fn ensure_window_in_work_area(window: tauri::WebviewWindow, maximized: bool) -> 
 #[tauri::command]
 fn diagnose_mpv_initialization(
     window: tauri::WebviewWindow,
-    mut initial_options: HashMap<String, serde_json::Value>,
+    initial_options: HashMap<String, serde_json::Value>,
 ) -> String {
     #[cfg(target_os = "windows")]
     {
