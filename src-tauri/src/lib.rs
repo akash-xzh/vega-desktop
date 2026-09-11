@@ -518,9 +518,10 @@ fn ensure_window_in_work_area(window: tauri::WebviewWindow, maximized: bool) -> 
 }
 
 #[tauri::command]
+#[allow(unused_mut)]
 fn diagnose_mpv_initialization(
     window: tauri::WebviewWindow,
-    initial_options: HashMap<String, serde_json::Value>,
+    mut initial_options: HashMap<String, serde_json::Value>,
 ) -> String {
     #[cfg(target_os = "windows")]
     {
