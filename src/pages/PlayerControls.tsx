@@ -1024,7 +1024,15 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                 onClick={(e) => toggleMenu(e, "quality")}
               >
                 {(() => {
-                  const sel = videoTracks.find((t) => t.selected);
+                  const playableVideoTracks = videoTracks.filter(
+                    (t) =>
+                      !t.albumart &&
+                      !t.image &&
+                      !["png", "jpeg", "mjpeg", "jpg"].includes(
+                        t.codec?.toLowerCase() || ""
+                      )
+                  );
+                  const sel = playableVideoTracks.find((t) => t.selected);
                   const h = sel
                     ? sel.demuxH || (sel.selected ? videoHeight : 0)
                     : 0;
@@ -1045,20 +1053,31 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
               </button>
               {openMenu === "quality" && (
                 <div className="inline-menu right wide" onClick={stop}>
-                  <button
-                    className={`inline-menu-item ${!videoTracks.some((t) => t.selected) ? "selected" : ""}`}
-                    onClick={() => {
-                      onSelectVideoTrack("auto");
-                      setOpenMenu(null);
-                    }}
-                  >
-                    <span>Auto</span>
-                    {!videoTracks.some((t) => t.selected) && (
-                      <Check size={14} />
-                    )}
-                  </button>
-                  {videoTracks.map((t) => {
-                    const h = t.demuxH || (t.selected ? videoHeight : 0);
+                  {(() => {
+                    const playableVideoTracks = videoTracks.filter(
+                      (t) =>
+                        !t.albumart &&
+                        !t.image &&
+                        !["png", "jpeg", "mjpeg", "jpg"].includes(
+                          t.codec?.toLowerCase() || ""
+                        )
+                    );
+                    return (
+                      <>
+                        <button
+                          className={`inline-menu-item ${!playableVideoTracks.some((t) => t.selected) ? "selected" : ""}`}
+                          onClick={() => {
+                            onSelectVideoTrack("auto");
+                            setOpenMenu(null);
+                          }}
+                        >
+                          <span>Auto</span>
+                          {!playableVideoTracks.some((t) => t.selected) && (
+                            <Check size={14} />
+                          )}
+                        </button>
+                        {playableVideoTracks.map((t) => {
+                          const h = t.demuxH || (t.selected ? videoHeight : 0);
                     const fallback =
                       t.selected && selectedStream?.quality
                         ? selectedStream.quality
@@ -1088,6 +1107,9 @@ export const PlayerControls: React.FC<PlayerControlsProps> = ({
                       </button>
                     );
                   })}
+                  </>
+                  );
+                  })()}
                 </div>
               )}
             </div>

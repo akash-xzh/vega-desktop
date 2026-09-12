@@ -36,6 +36,8 @@ export interface MpvTrack {
   external: boolean;
   demuxW?: number;
   demuxH?: number;
+  albumart?: boolean;
+  image?: boolean;
 }
 
 export interface MpvChapter {
@@ -132,6 +134,14 @@ export const useMpvPlayer = (opts?: UseMpvPlayerOptions) => {
             `track-list/${i}/demux-h`,
             "int64",
           ).catch(() => undefined)) as number | undefined;
+          const albumart = (await getProperty(
+            `track-list/${i}/albumart`,
+            "flag",
+          ).catch(() => false)) as boolean;
+          const image = (await getProperty(
+            `track-list/${i}/image`,
+            "flag",
+          ).catch(() => false)) as boolean;
 
           parsed.push({
             id,
@@ -143,6 +153,8 @@ export const useMpvPlayer = (opts?: UseMpvPlayerOptions) => {
             external: external || false,
             demuxW,
             demuxH,
+            albumart,
+            image,
           });
         } catch (err) {}
       }
@@ -214,6 +226,7 @@ export const useMpvPlayer = (opts?: UseMpvPlayerOptions) => {
       ).toString(),
       "sub-ass-override": "force",
       "demuxer-lavf-o": "fflags=+genpts",
+      "hls-bitrate": "max",
     };
 
     if (hwAccel) {

@@ -213,7 +213,26 @@ export const MetaPage: React.FC = () => {
     const currentStillExists = activeSeason && filteredLinkList.some((item: Link) => item.title === activeSeason.title);
     if (currentStillExists) return;
     const savedTitle = localStorage.getItem(`vega_season_${link}`);
-    setActiveSeason(filteredLinkList.find((item: Link) => item.title === savedTitle) ?? filteredLinkList[0]);
+    let bestDefault = filteredLinkList[0];
+    const hasQuality = filteredLinkList.some(item => {
+      const t = item.title.toLowerCase();
+      return t.includes("4k") || t.includes("1080") || t.includes("720") || t.includes("480") || t.includes("360");
+    });
+    if (hasQuality) {
+      bestDefault = [...filteredLinkList].sort((a, b) => {
+        const getQualityScore = (title: string) => {
+          const t = title.toLowerCase();
+          if (t.includes("4k") || t.includes("2160")) return 2160;
+          if (t.includes("1080")) return 1080;
+          if (t.includes("720")) return 720;
+          if (t.includes("480")) return 480;
+          if (t.includes("360")) return 360;
+          return 0;
+        };
+        return getQualityScore(b.title) - getQualityScore(a.title);
+      })[0];
+    }
+    setActiveSeason(filteredLinkList.find((item: Link) => item.title === savedTitle) ?? bestDefault);
   }, [filteredLinkList, activeSeason, link]);
 
   const { data: episodeList, isLoading: episodeLoading, error: episodeError } = useEpisodes(
