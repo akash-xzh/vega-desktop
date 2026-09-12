@@ -18,9 +18,26 @@ export const parseQualityResolution = (quality?: string, server?: string): numbe
     return 0;
   };
 
+  const getBonus = (str?: string): number => {
+    if (!str) return 0;
+    const lower = str.toLowerCase();
+    let bonus = 0;
+    if (lower.includes("remux")) bonus += 0.8;
+    if (lower.includes("dovi") || lower.includes("dv ") || lower.includes("dv-") || lower.includes("dolby vision")) bonus += 0.7;
+    if (lower.includes("hdr")) bonus += 0.6;
+    if (lower.includes("hevc") || lower.includes("h265") || lower.includes("h.265")) bonus += 0.5;
+    if (lower.includes("av1")) bonus += 0.4;
+    if (lower.includes("10bit")) bonus += 0.2;
+    return bonus;
+  };
+
   const resFromQuality = check(quality);
-  if (resFromQuality > 0) return resFromQuality;
-  return check(server);
+  if (resFromQuality > 0) return resFromQuality + getBonus(quality) + getBonus(server);
+  
+  const resFromServer = check(server);
+  if (resFromServer > 0) return resFromServer + getBonus(server) + getBonus(quality);
+  
+  return getBonus(quality) + getBonus(server);
 };
 
 export const findBestMatchingStream = (

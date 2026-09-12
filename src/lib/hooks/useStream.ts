@@ -11,6 +11,7 @@ import {
   isVideoDownloadItem,
   isSubtitleDownloadItem,
 } from "../zustand/downloadStore";
+import { parseQualityResolution } from "../utils/streamQuality";
 
 interface UseStreamOptions {
   activeEpisode: any;
@@ -263,7 +264,14 @@ export const useStream = ({
   // Update selected stream when data changes
   useEffect(() => {
     if (streamData && streamData.length > 0) {
-      setSelectedStream(streamData[0]);
+      if (streamData[0]?.server === "Local File") {
+        setSelectedStream(streamData[0]);
+        return;
+      }
+      const sorted = [...streamData].sort((a, b) => 
+        parseQualityResolution(b.quality, b.server) - parseQualityResolution(a.quality, a.server)
+      );
+      setSelectedStream(sorted[0]);
     }
   }, [streamData]);
 

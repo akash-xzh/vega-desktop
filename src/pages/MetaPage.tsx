@@ -19,7 +19,7 @@ import { useArtworkPalette } from "../lib/hooks/useArtworkPalette";
 import { useContentDetails } from "../lib/hooks/useContentInfo";
 import { useEpisodes } from "../lib/hooks/useEpisodes";
 import type { EpisodeLink, Link, Stream, SkipInterval } from "../lib/providers/types";
-import { findBestMatchingStream } from "../lib/utils/streamQuality";
+import { findBestMatchingStream, parseQualityResolution } from "../lib/utils/streamQuality";
 import { providerManager } from "../lib/services/ProviderManager";
 import { cacheStorage, mainStorage, watchHistoryStorage } from "../lib/storage";
 import { settingsStorage } from "../lib/storage/SettingsStorage";
@@ -218,18 +218,13 @@ export const MetaPage: React.FC = () => {
       const t = item.title.toLowerCase();
       return t.includes("4k") || t.includes("1080") || t.includes("720") || t.includes("480") || t.includes("360");
     });
-    if (hasQuality) {
+    const hasSeasons = filteredLinkList.some((item: Link) => {
+      const t = item.title.toLowerCase();
+      return t.includes("season") || /s\d+/i.test(t);
+    });
+    if (hasQuality && !hasSeasons) {
       bestDefault = [...filteredLinkList].sort((a, b) => {
-        const getQualityScore = (title: string) => {
-          const t = title.toLowerCase();
-          if (t.includes("4k") || t.includes("2160")) return 2160;
-          if (t.includes("1080")) return 1080;
-          if (t.includes("720")) return 720;
-          if (t.includes("480")) return 480;
-          if (t.includes("360")) return 360;
-          return 0;
-        };
-        return getQualityScore(b.title) - getQualityScore(a.title);
+        return parseQualityResolution(b.title) - parseQualityResolution(a.title);
       })[0];
     }
     setActiveSeason(filteredLinkList.find((item: Link) => item.title === savedTitle) ?? bestDefault);

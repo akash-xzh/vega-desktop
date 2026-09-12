@@ -25,6 +25,9 @@
   display: flex;
   flex-direction: column;
   overscroll-behavior-y: contain;
+  scroll-behavior: smooth;
+  will-change: scroll-position, transform;
+  transform: translateZ(0);
 }
 
 .layout-content::after {
