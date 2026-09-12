@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { client } from "./lib/client";
 import { Layout } from "./components/layout/Layout";
 import { WindowControls } from "./components/layout/WindowControls";
+import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { ExtensionsPage } from "./pages/ExtensionsPage";
 import { HomePage } from "./pages/HomePage";
 import { MetaPage } from "./pages/MetaPage";
@@ -112,32 +113,36 @@ export default function App() {
 
   return (
     <QueryClientProvider client={client}>
-      <WafDialog />
-      <ToastContainer />
-      <BrowserRouter>
-        <WindowControls />
-        <Routes>
-          {/* Player is outside Layout since it needs fullscreen without sidebar */}
-          <Route path="player" element={<PlayerPage />} />
-          <Route path="/" element={<Layout />}>
-            <Route index element={<HomePage />} />
-            <Route path="content/:url" element={<MetaPage />} />
-            <Route path="/catalog" element={<CatalogPage />} />
-            <Route path="/search" element={<SearchPage />} />
-            <Route path="/watchlist" element={<WatchlistPage />} />
-            <Route path="/watchlist/content/:url" element={<MetaPage />} />
-            <Route path="/downloads" element={<DownloadsPage />} />
-            <Route
-              path="/downloads/series/:showName"
-              element={<DownloadsSeriesPage />}
-            />
-            <Route path="extensions" element={<ExtensionsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
+      <ErrorBoundary>
+        <WafDialog />
+        <ToastContainer />
+        <BrowserRouter>
+          <WindowControls />
+          <Routes>
+            {/* Player is outside Layout since it needs fullscreen without sidebar */}
+            <Route path="player" element={<PlayerPage />} />
+            <Route path="/" element={<Layout />}>
+              <Route index element={<HomePage />} />
+              <Route path="content/:url" element={<MetaPage />} />
+              <Route path="content/*" element={<MetaPage />} />
+              <Route path="/catalog" element={<CatalogPage />} />
+              <Route path="/search" element={<SearchPage />} />
+              <Route path="/watchlist" element={<WatchlistPage />} />
+              <Route path="/watchlist/content/:url" element={<MetaPage />} />
+              <Route path="/watchlist/content/*" element={<MetaPage />} />
+              <Route path="/downloads" element={<DownloadsPage />} />
+              <Route
+                path="/downloads/series/:showName"
+                element={<DownloadsSeriesPage />}
+              />
+              <Route path="extensions" element={<ExtensionsPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+              <Route path="settings" element={<SettingsPage />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </ErrorBoundary>
     </QueryClientProvider>
   );
 }

@@ -15,7 +15,7 @@ import { DownloadServerDialog } from "../components/DownloadServerDialog";
 import { BatchQualityDialog } from "../components/content/BatchQualityDialog";
 import { FocusableButton } from "../components/layout/FocusableButton";
 import { Skeleton } from "../components/ui/skeleton";
-import { useArtworkPalette, useArtworkPaletteReady } from "../lib/hooks/useArtworkPalette";
+import { useArtworkPalette } from "../lib/hooks/useArtworkPalette";
 import { useContentDetails } from "../lib/hooks/useContentInfo";
 import { useEpisodes } from "../lib/hooks/useEpisodes";
 import type { EpisodeLink, Link, Stream, SkipInterval } from "../lib/providers/types";
@@ -130,7 +130,7 @@ const EpisodeSearchField: React.FC<EpisodeSearchFieldProps> = ({
 };
 
 export const MetaPage: React.FC = () => {
-  const { url } = useParams<{ url: string }>();
+  const params = useParams<{ url?: string; "*": string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { provider, installedProviders } = useContentStore();
@@ -140,7 +140,13 @@ export const MetaPage: React.FC = () => {
   const tvMode = settingsStorage.isTvModeEnabled() || isAndroid;
   const { ref: focusRef, focusKey } = useFocusable({ focusable: tvMode, trackChildren: true });
 
-  const link = decodeURIComponent(url || "");
+  const rawParam = params.url || params["*"] || "";
+  let link = rawParam;
+  try {
+    link = decodeURIComponent(rawParam);
+  } catch {
+    link = rawParam;
+  }
   const activeProviderValue = searchParams.get("provider") || provider?.value || "";
   const episodeSortOrderKey = `${EPISODE_SORT_ORDER_KEY_PREFIX}:${activeProviderValue}:${link}`;
   const { info, meta, isLoading, error, refetch } = useContentDetails(link, activeProviderValue);
@@ -230,7 +236,6 @@ export const MetaPage: React.FC = () => {
     ? bgImage || meta?.poster || cachedPosterImage || info?.image
     : null;
   const paletteStyle = useArtworkPalette(paletteArtwork);
-  const paletteReady = useArtworkPaletteReady(paletteArtwork);
   const providerName =
     installedProviders.find((item) => item.value === activeProviderValue)?.display_name ||
     provider?.display_name ||
@@ -269,8 +274,11 @@ export const MetaPage: React.FC = () => {
       let saved: any = savedRaw ? JSON.parse(savedRaw) : null;
 
       const history = watchHistoryStorage.getWatchHistory();
+      const currentTitle = typeof title === "string" ? title.trim().toLowerCase() : "";
       const matchingHistory = history.filter(
-        (h: any) => h.link === link || (h.title && h.title.trim().toLowerCase() === title.trim().toLowerCase()),
+        (h: any) =>
+          h.link === link ||
+          (typeof h.title === "string" && currentTitle && h.title.trim().toLowerCase() === currentTitle),
       );
       matchingHistory.sort(
         (a: any, b: any) => (b.timestamp || b.lastPlayed || 0) - (a.timestamp || a.lastPlayed || 0),
@@ -349,8 +357,14 @@ export const MetaPage: React.FC = () => {
       });
   }, [downloads, dialogContext, link]);
 
-  const isThemeLoading = dynamicThemeEnabled && (isLoading || !paletteReady);
-  if ((isLoading && !info) || isThemeLoading) {
+  const hasAnyPlayback = useMemo(() => {
+    const hasProgress = Object.values(episodesProgress).some(
+      (p) => p && typeof p.position === "number" && p.position > 0,
+    );
+    return Boolean(hasProgress || lastPlayedInfo);
+  }, [episodesProgress, lastPlayedInfo]);
+
+  if (isLoading && !info) {
     return <ContentDetailSkeleton />;
   }
 
@@ -399,7 +413,7 @@ export const MetaPage: React.FC = () => {
         primaryTitle: title,
         secondaryTitle: activeSeason?.title || "",
         type,
-        poster: { poster: posterImage, logo: meta?.logo || info.logo, background: bgImage },
+        poster: { poster: posterImage, logo: meta?.logo || info?.logo, background: bgImage },
         providerValue: activeProviderValue,
         infoUrl: link,
       },
@@ -434,7 +448,7 @@ export const MetaPage: React.FC = () => {
       episodeName: episode.title,
       seasonTitle: groupTitle,
       type: type as "movie" | "series",
-      imdbId: info.imdbId || meta?.imdbId,
+      imdbId: info?.imdbId || meta?.imdbId,
       sourceLink: episode.link,
       downloaded: stored?.status === "completed",
       downloadedServer: stored?.server,
@@ -453,7 +467,7 @@ export const MetaPage: React.FC = () => {
 
     const isQuickDownload =
       Boolean(
-        info.quickDownload ||
+        info?.quickDownload ||
           activeSeason?.quickDownload ||
           (episode as any)?.quickDownload,
       ) &&
@@ -569,7 +583,7 @@ export const MetaPage: React.FC = () => {
   };
 
   const rows = activeSeason?.episodesLink ? episodeList || [] : activeSeason?.directLinks || [];
-  const rowType = activeSeason?.episodesLink ? "series" : activeSeason?.directLinks?.[0]?.type || info.type || "movie";
+  const rowType = activeSeason?.episodesLink ? "series" : activeSeason?.directLinks?.[0]?.type || info?.type || "movie";
   const displayedRows = rows
     .map((episode: any, sourceIndex: number) => ({ episode, sourceIndex }))
     .filter(({ episode }) =>
@@ -583,38 +597,32 @@ export const MetaPage: React.FC = () => {
   const handleStartBatchDownload = async () => {
     if (selectedEpisodes.size === 0) return;
 
-    const rowsToDownload = playableRows
-      .map((ep, idx) => ({ ep, idx }))
-      .filter(({ idx }) => selectedEpisodes.has(idx));
+    const selectedIndices = Array.from(selectedEpisodes).sort((a, b) => a - b);
+    const firstIndex = selectedIndices[0];
+    const firstEp = playableRows[firstIndex];
+    if (!firstEp) return;
 
-    if (rowsToDownload.length === 0) return;
-
-    const firstItem = rowsToDownload[0];
-    setBatchFirstEpTitle(firstItem.ep.title || `Episode ${firstItem.idx + 1}`);
-    setBatchQualityStreams([]);
-    setBatchQualityError(null);
-    setIsBatchQualityLoading(true);
+    setBatchFirstEpTitle(firstEp.title || `Episode ${firstIndex + 1}`);
     setIsBatchQualityDialogOpen(true);
+    setIsBatchQualityLoading(true);
+    setBatchQualityError(null);
+    setBatchQualityStreams([]);
 
     try {
       const streams = await providerManager.getStream({
-        link: firstItem.ep.link,
+        link: firstEp.link,
         type: rowType,
-        signal: new AbortController().signal,
         providerValue: activeProviderValue,
         isDownload: true,
       });
 
-      const validStreams = streams || [];
-      setBatchQualityStreams(validStreams);
-      if (validStreams.length === 0) {
-        setBatchQualityError("No downloadable streams found for the first episode.");
+      if (!streams || streams.length === 0) {
+        setBatchQualityError("No streams available for batch download");
+      } else {
+        setBatchQualityStreams(streams);
       }
-    } catch (err) {
-      console.error("Failed to load streams for batch download", err);
-      setBatchQualityError(
-        err instanceof Error ? err.message : "Failed to load qualities from the first episode.",
-      );
+    } catch (err: any) {
+      setBatchQualityError(err?.message || "Failed to load streams for batch download");
     } finally {
       setIsBatchQualityLoading(false);
     }
@@ -632,16 +640,17 @@ export const MetaPage: React.FC = () => {
   const executeBatchDownload = async (targetQuality: string, targetServer?: string) => {
     if (selectedEpisodes.size === 0) return;
     setIsBatchDownloading(true);
+    const groupTitle = activeSeason?.title || "1";
+    const indicesToDownload = Array.from(selectedEpisodes).sort((a, b) => a - b);
+    setBatchProgress({ current: 0, total: indicesToDownload.length });
 
     try {
-      const groupTitle = activeSeason?.title || "Default";
-      const rowsToDownload = playableRows
-        .map((ep, idx) => ({ ep, idx }))
-        .filter(({ idx }) => selectedEpisodes.has(idx));
+      for (let i = 0; i < indicesToDownload.length; i++) {
+        const idx = indicesToDownload[i];
+        const ep = playableRows[idx];
+        if (!ep) continue;
 
-      for (let i = 0; i < rowsToDownload.length; i++) {
-        const { ep, idx } = rowsToDownload[i];
-        setBatchProgress({ current: i + 1, total: rowsToDownload.length });
+        setBatchProgress({ current: i + 1, total: indicesToDownload.length });
 
         const id = `${title}_S${groupTitle}_E${idx + 1}`;
         const finalTitle = `${title} S${groupTitle} E${idx + 1}`;
@@ -654,7 +663,7 @@ export const MetaPage: React.FC = () => {
           episodeName: ep.title,
           seasonTitle: groupTitle,
           type: rowType as "movie" | "series",
-          imdbId: info.imdbId || meta?.imdbId,
+          imdbId: info?.imdbId || meta?.imdbId,
           sourceLink: ep.link,
           skip:
             (ep as any)?.skip ||
@@ -729,7 +738,9 @@ export const MetaPage: React.FC = () => {
     let targetIndex = playableRows.findIndex(
       (ep) =>
         (lastPlayedInfo.episodeLink && ep.link === lastPlayedInfo.episodeLink) ||
-        (ep.title && ep.title.trim().toLowerCase() === lastPlayedInfo.episodeTitle.trim().toLowerCase()),
+        (ep.title &&
+          lastPlayedInfo.episodeTitle &&
+          ep.title.trim().toLowerCase() === lastPlayedInfo.episodeTitle.trim().toLowerCase()),
     );
 
     if (targetIndex < 0 && lastPlayedInfo.episodeIndex !== undefined) {
@@ -786,8 +797,13 @@ export const MetaPage: React.FC = () => {
       });
 
       const history = watchHistoryStorage.getWatchHistory();
+      const currentTitle = typeof title === "string" ? title.trim().toLowerCase() : "";
       history
-        .filter((h: any) => h.link === link || (h.title && h.title.trim().toLowerCase() === title.trim().toLowerCase()))
+        .filter(
+          (h: any) =>
+            h.link === link ||
+            (typeof h.title === "string" && currentTitle && h.title.trim().toLowerCase() === currentTitle),
+        )
         .forEach((h: any) => {
           if (h.id) watchHistoryStorage.removeFromWatchHistory(h.id);
           if (h.link) watchHistoryStorage.removeFromWatchHistory(h.link);
@@ -800,13 +816,6 @@ export const MetaPage: React.FC = () => {
       console.error("Failed to clear all playbacks", err);
     }
   };
-
-  const hasAnyPlayback = useMemo(() => {
-    const hasProgress = Object.values(episodesProgress).some(
-      (p) => p && typeof p.position === "number" && p.position > 0,
-    );
-    return Boolean(hasProgress || lastPlayedInfo);
-  }, [episodesProgress, lastPlayedInfo]);
 
   const selectSubtitle = async (sub: { uri: string; title: string; language?: string; type?: string }) => {
     if (!dialogContext) return;
@@ -842,12 +851,12 @@ export const MetaPage: React.FC = () => {
         <ContentHero
           title={title}
           background={bgImage}
-          logo={meta?.logo || info.logo}
+          logo={meta?.logo || info?.logo}
           year={year}
-          runtime={meta?.runtime || info.runtime}
-          rating={meta?.imdbRating || info.rating}
+          runtime={meta?.runtime || info?.runtime}
+          rating={meta?.imdbRating || info?.rating}
           genres={meta?.genre}
-          tags={info.tags}
+          tags={info?.tags}
           onBack={() => navigate(-1)}
         />
 
@@ -859,7 +868,7 @@ export const MetaPage: React.FC = () => {
             onSearch={() => navigate(`/search?q=${encodeURIComponent(title)}`)}
             onToggleSaved={toggleWatchList}
             onOpenWeb={webUrl ? () => void openUrl(webUrl) : undefined}
-            onOpenStory={info.tmdbId || info.imdbId ? () => setStoryOpen(true) : undefined}
+            onOpenStory={info?.tmdbId || info?.imdbId ? () => setStoryOpen(true) : undefined}
             onOpenTrailer={trailerUrl ? () => void openUrl(trailerUrl) : undefined}
           />
 
@@ -1165,9 +1174,9 @@ export const MetaPage: React.FC = () => {
           title={title}
           description={description}
           backdrop={bgImage}
-          imdbId={info.imdbId}
-          tmdbId={info.tmdbId}
-          type={info.type}
+          imdbId={info?.imdbId}
+          tmdbId={info?.tmdbId}
+          type={info?.type}
         />
       </main>
     </FocusContext.Provider>

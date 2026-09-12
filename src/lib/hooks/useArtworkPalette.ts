@@ -227,14 +227,29 @@ export function useArtworkPaletteReady(imageUrl?: string | null) {
     let active = true;
     if (!imageUrl) {
       setReady(true);
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     const known = getKnownPalette(imageUrl);
     setReady(known.known);
-    if (!known.known) void extractPalette(imageUrl).then(() => {
-      if (active) setReady(true);
-    });
+    if (!known.known) {
+      const fallbackTimer = setTimeout(() => {
+        if (active) setReady(true);
+      }, 1500);
+
+      void extractPalette(imageUrl)
+        .then(() => {
+          if (active) setReady(true);
+        })
+        .catch(() => {
+          if (active) setReady(true);
+        })
+        .finally(() => {
+          clearTimeout(fallbackTimer);
+        });
+    }
 
     return () => {
       active = false;
@@ -253,14 +268,22 @@ export function useArtworkPalette(imageUrl?: string | null) {
     let active = true;
     if (!imageUrl) {
       setPalette(null);
-      return () => { active = false; };
+      return () => {
+        active = false;
+      };
     }
 
     const known = getKnownPalette(imageUrl);
     setPalette(known.palette);
-    if (!known.known) void extractPalette(imageUrl).then((nextPalette) => {
-      if (active) setPalette(nextPalette);
-    });
+    if (!known.known) {
+      void extractPalette(imageUrl)
+        .then((nextPalette) => {
+          if (active) setPalette(nextPalette);
+        })
+        .catch(() => {
+          if (active) setPalette(null);
+        });
+    }
 
     return () => {
       active = false;
