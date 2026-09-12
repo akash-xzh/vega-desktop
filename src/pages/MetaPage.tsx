@@ -214,7 +214,7 @@ export const MetaPage: React.FC = () => {
     if (currentStillExists) return;
     const savedTitle = localStorage.getItem(`vega_season_${link}`);
     let bestDefault = filteredLinkList[0];
-    const hasQuality = filteredLinkList.some(item => {
+    const hasQuality = filteredLinkList.some((item: Link) => {
       const t = item.title.toLowerCase();
       return t.includes("4k") || t.includes("1080") || t.includes("720") || t.includes("480") || t.includes("360");
     });
